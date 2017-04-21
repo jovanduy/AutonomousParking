@@ -15,7 +15,7 @@ SPEED = 0.2
 FORWARD_SLOW = Twist(linear=Vector3(SPEED,0.0,0.0), angular=Vector3(0.0,0.0,0.0))
 
 
-class ParkingNode(object):
+class ParallelParkingNode(object):
     def __init__(self):
         self.r = rospy.Rate(5)
         self.publisher = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
@@ -38,7 +38,7 @@ class ParkingNode(object):
             self.twist = FORWARD_SLOW
             if self.dist2Neato is None:
                 self.dist2Neato = self.ranges[270]
-                self.adjustment = 0.1
+                self.adjustment = 0.2
                 print self.dist2Neato
             elif self.ranges[270] > (self.dist2Neato + LENGTH_OF_SPOT - .05):
                 self.dist2Wall = self.ranges[270]
@@ -56,7 +56,7 @@ class ParkingNode(object):
             if self.dist2Neato >= 0.3 and not self.isAligned: #determine later what the threshold should be
                 self.align_with_origin()
                 self.drive_arc()
-                self.park()
+                # self.park()
                 rospy.signal_shutdown("Done parking.")
             elif self.dist2Neato < 0.3:
                 print "Neato was too close to park!"
@@ -70,7 +70,7 @@ class ParkingNode(object):
     
     def align_with_origin(self):
         """After stopping next to the second parked Neato, this function will align us properly so that we can successfully drive our circle."""
-        dist = self.radius - self.widthOfSpot/2.0 - self.adjustment
+        dist = self.radius - self.widthOfSpot/2.0 + self.adjustment
         now = rospy.Time.now()
         travelTime = dist/SPEED #dist/speed = time
         while rospy.Time.now() - now <= rospy.Duration(travelTime):
@@ -81,11 +81,17 @@ class ParkingNode(object):
         
     
     def drive_arc(self):
-        omega = (SPEED/(self.radius + 0.15))
-        travelTime = (math.pi/2)/omega
+        omega = (SPEED/(self.radius+ 0.25))
+        travelTime = (math.pi/3)/omega
         now = rospy.Time.now()
         while rospy.Time.now() - now <= rospy.Duration(travelTime):
             self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,omega))
+        omega = (SPEED/(self.radius + 0.2))
+        travelTime = (math.pi/3)/omega - 0.2
+        now = rospy.Time.now()
+        while rospy.Time.now() - now <= rospy.Duration(travelTime):
+            self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,-omega))
+
 
     def park(self):
         now = rospy.Time.now()
@@ -104,5 +110,5 @@ class ParkingNode(object):
         
 if __name__ == '__main__':            
     rospy.init_node('parking')
-    parking_node = ParkingNode()
+    parking_node = ParallelParkingNode()
     parking_node.run()
