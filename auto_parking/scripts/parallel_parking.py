@@ -56,7 +56,7 @@ class ParallelParkingNode(object):
             if self.dist2Neato >= 0.3 and not self.isAligned: #determine later what the threshold should be
                 self.align_with_origin()
                 self.drive_arc()
-                # self.park()
+                self.park()
                 rospy.signal_shutdown("Done parking.")
             elif self.dist2Neato < 0.3:
                 print "Neato was too close to park!"
@@ -82,11 +82,11 @@ class ParallelParkingNode(object):
     
     def drive_arc(self):
         omega = (SPEED/(self.radius+ 0.25))
-        travelTime = (math.pi/3)/omega
+        travelTime = (math.pi/2.5)/omega
         now = rospy.Time.now()
         while rospy.Time.now() - now <= rospy.Duration(travelTime):
             self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,omega))
-        omega = (SPEED/(self.radius + 0.2))
+        omega = (SPEED/(self.radius))
         travelTime = (math.pi/3)/omega - 0.2
         now = rospy.Time.now()
         while rospy.Time.now() - now <= rospy.Duration(travelTime):
@@ -96,7 +96,7 @@ class ParallelParkingNode(object):
     def park(self):
         now = rospy.Time.now()
         while rospy.Time.now() - now <= rospy.Duration(1):
-            self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,0))
+            self.twist = Twist(linear=Vector3(SPEED,0,0), angular=Vector3(0,0,-0.4))
         self.twist = STOP
 
     def run(self):
