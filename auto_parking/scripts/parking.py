@@ -20,6 +20,7 @@ class ParkingNode(object):
         self.r = rospy.Rate(5)
         self.publisher = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         rospy.Subscriber('/scan', LaserScan, self.process_scan)
+        self.is_parallel = rospy.get_param('parallel', False)
         self.timestamp1 = None
         self.timestamp2 = None
         self.dist2Neato = None
@@ -38,7 +39,7 @@ class ParkingNode(object):
             self.twist = FORWARD_SLOW
             if self.dist2Neato is None:
                 self.dist2Neato = self.ranges[270]
-                self.adjustment = 0.1
+                self.adjustment = 0.2 if self.is_parallel else -0.1
                 print self.dist2Neato
             elif self.ranges[270] > (self.dist2Neato + LENGTH_OF_SPOT - .05):
                 self.dist2Wall = self.ranges[270]
@@ -55,7 +56,6 @@ class ParkingNode(object):
             self.widthOfSpot = SPEED * (self.timestamp2.secs - self.timestamp1.secs)
             if self.dist2Neato >= 0.3 and not self.isAligned: #determine later what the threshold should be
                 self.align_with_origin()
-                self.drive_arc()
                 self.park()
                 rospy.signal_shutdown("Done parking.")
             elif self.dist2Neato < 0.3:
@@ -70,27 +70,45 @@ class ParkingNode(object):
     
     def align_with_origin(self):
         """After stopping next to the second parked Neato, this function will align us properly so that we can successfully drive our circle."""
-        dist = self.radius - self.widthOfSpot/2.0 - self.adjustment
+        dist = self.radius - self.widthOfSpot/2.0 + self.adjustment
         now = rospy.Time.now()
         travelTime = dist/SPEED #dist/speed = time
         while rospy.Time.now() - now <= rospy.Duration(travelTime):
             self.twist = FORWARD_SLOW
-        print "we have exited loop"
         self.twist = STOP
         self.isAligned = True
-        
-    
-    def drive_arc(self):
-        omega = (SPEED/(self.radius + 0.15))
-        travelTime = (math.pi/2)/omega
-        now = rospy.Time.now()
-        while rospy.Time.now() - now <= rospy.Duration(travelTime):
-            self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,omega))
+
+    def drive_arc(self, omega, travelTime, forward=False):
+        if forward:
+            now = rospy.Time.now()
+            while rospy.Time.now() - now <= travelTime:
+                self.twist = Twist(linear=Vector3(SPEED,0,0), angular=Vector3(0,0,omega))
+        else:
+            now = rospy.Time.now()
+            while rospy.Time.now() - now <= travelTime:
+                self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,omega))
 
     def park(self):
-        now = rospy.Time.now()
-        while rospy.Time.now() - now <= rospy.Duration(1):
-            self.twist = Twist(linear=Vector3(-SPEED,0,0), angular=Vector3(0,0,0))
+        if self.is_parallel:
+            # first arc
+            omega = SPEED / (self.radius + 0.25)
+            travelTime = rospy.Duration(math.pi/2.5/omega)
+            drive_arc(omega, travelTime)
+            # second arc
+            omega = -SPEED/self.radius
+            travelTime = rospy.Duration(math.pi/3.0/omega - 0.2)
+            drive_arc(omega, travelTime)
+            # drive forward to realign
+            omega = -0.4
+            travelTime = rospy.Duration(1)
+            drive_arc(omega, travelTime, True)
+        else:
+            omega = SPEED / (self.radius + 0.15)
+            travelTime = rospy.Duration(math.pi/2.0/omega)
+            # drive into spot
+            drive_arc(omega, travelTime)
+            # drive back to fully enter spot
+            drive_arc(0, rospy.Duration(1))
         self.twist = STOP
 
     def run(self):
