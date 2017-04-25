@@ -26,7 +26,7 @@ class ParkingNode(object):
         self.publisher = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         rospy.Subscriber('/scan', LaserScan, self.process_scan)
         # user chooses which parking mode to be performed
-        self.is_parallel = rospy.get_param('parallel', False)
+        self.is_parallel = rospy.get_param('~parallel', False)
 
         # Instance Variables
         self.timestamp1 = None
@@ -101,10 +101,9 @@ class ParkingNode(object):
     def drive_arc(self, omega, travelTime, sign):
         '''given the omega, travel time and direction, drive in the corresponding arc'''
         # The third parameter (sign) represents whether the forward velocity of the twist will be positive or negative
-        if forward:
-            now = rospy.Time.now()
-            while rospy.Time.now() - now <= travelTime:
-                self.twist = Twist(linear=Vector3(sign*SPEED,0,0), angular=Vector3(0,0,omega))
+        now = rospy.Time.now()
+        while rospy.Time.now() - now <= travelTime:
+            self.twist = Twist(linear=Vector3(sign*SPEED,0,0), angular=Vector3(0,0,omega))
 
                 
     def park(self):
@@ -113,26 +112,26 @@ class ParkingNode(object):
             # first arc
             omega = SPEED / (self.radius + 0.25)
             travelTime = rospy.Duration(math.pi/2.5/omega)
-            drive_arc(omega, travelTime, -1)
-            
+            self.drive_arc(omega, travelTime, -1)
             # second arc
-            omega = -SPEED/self.radius
+
+            omega = SPEED / self.radius
             travelTime = rospy.Duration(math.pi/3.0/omega - 0.2)
-            drive_arc(omega, travelTime, -1)
+            self.drive_arc(-omega, travelTime, -1)
             
             # drive forward to realign
             omega = -0.4
             travelTime = rospy.Duration(1)
-            drive_arc(omega, travelTime, 1)
+            self.drive_arc(omega, travelTime, 1)
             
         else:
             # drive into spot
             omega = SPEED / (self.radius + 0.15)
             travelTime = rospy.Duration(math.pi/2.0/omega)
-            drive_arc(omega, travelTime, -1)
+            self.drive_arc(omega, travelTime, -1)
             
             # drive back to fully enter spot
-            drive_arc(0, rospy.Duration(1), -1)
+            self.drive_arc(0, rospy.Duration(1), -1)
             
         self.twist = STOP
 
