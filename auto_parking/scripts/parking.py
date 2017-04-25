@@ -20,7 +20,8 @@ class ParkingNode(object):
         self.r = rospy.Rate(5)
         self.publisher = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         rospy.Subscriber('/scan', LaserScan, self.process_scan)
-        self.is_parallel = rospy.get_param('parallel', False)
+        self.is_parallel = rospy.get_param('~parallel', False)
+	print self.is_parallel
         self.timestamp1 = None
         self.timestamp2 = None
         self.dist2Neato = None
@@ -93,22 +94,22 @@ class ParkingNode(object):
             # first arc
             omega = SPEED / (self.radius + 0.25)
             travelTime = rospy.Duration(math.pi/2.5/omega)
-            drive_arc(omega, travelTime)
+            self.drive_arc(omega, travelTime)
             # second arc
-            omega = -SPEED/self.radius
+            omega = SPEED/self.radius
             travelTime = rospy.Duration(math.pi/3.0/omega - 0.2)
-            drive_arc(omega, travelTime)
+            self.drive_arc(-omega, travelTime)
             # drive forward to realign
             omega = -0.4
             travelTime = rospy.Duration(1)
-            drive_arc(omega, travelTime, True)
+            self.drive_arc(omega, travelTime, True)
         else:
             omega = SPEED / (self.radius + 0.15)
             travelTime = rospy.Duration(math.pi/2.0/omega)
             # drive into spot
-            drive_arc(omega, travelTime)
+            self.drive_arc(omega, travelTime)
             # drive back to fully enter spot
-            drive_arc(0, rospy.Duration(1))
+            self.drive_arc(0, rospy.Duration(1))
         self.twist = STOP
 
     def run(self):
