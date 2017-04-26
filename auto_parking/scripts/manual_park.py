@@ -34,8 +34,8 @@ class ParkingSpotRecognizer(object):
         self.is_spot_occupied = None
         self.occupied_checks = []
         self.start_time = rospy.Time.now()
-        self.vel = 1
-        self.omega = 1
+        self.vel = None
+        self.omega = None
         # self.isImg = False
         
         
@@ -45,7 +45,8 @@ class ParkingSpotRecognizer(object):
             called cv_image for subsequent processing """
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self.img_copy = deepcopy(self.cv_image)
-        self.draw_arc()
+        self.calculate_arc()
+        #self.draw_arc()
         # self.hsv_image = cv2.cvtColor(self.cv_image, cv2.COLOR_BGR2HSV)
         # self.binary_image = cv2.inRange(self.hsv_image, self.hsv_lb, self.hsv_ub)
         # self.spot_delineators = self.find_delineators()
@@ -66,18 +67,45 @@ class ParkingSpotRecognizer(object):
     def process_twist(self, twist):
         self.vel = twist.linear.x
         self.omega = twist.angular.z
+
+    def calculate_arc(self):
+        """ Compute the endpoint of of our current projected arc"""
+        if self.vel and self.omega and self.omega != 0:
+            self.radius = self.vel/self.omega
+            #calculate where the real life endpoint of our arc is
+            endpoint = np.array([[self.radius], [abs(self.radius)], [1]])
+            
+            #convert that endpoint to a pixel in our image
+            pixel_x = np.matmul(np.asarray(self.K).reshape(3,3), endpoint)[0][0]
+            pixel_y = 0.13 * self.fy / abs(self.radius) + self.cy
+            
+            pixel = (pixel_x, pixel_y)
+            print pixel
+        
+            endpoint1 = (pixel[0] - 20, pixel[1])
+            endpoint2 = (pixel[0] + 20, pixel[1])
+        
+            self.endpoints = (endpoint1, endpoint2)
+        
     
-    def draw_arc(self):
-        if self.omega != 0:
-            radius = self.vel*100 / self.omega
-            print radius
-            start_angle = 0 if self.omega > 0 else 180
-            cv2.ellipse(self.cv_image, (int(320 - radius),240), (int(abs(radius)),
-                int(abs(radius))), 0, start_angle, 80, (0, 0, 255), 2)
-            # cv2.ellipse(self.cv_image, (320, 240), (50,50), 0, 0, 80, (0, 0, 255), 2)
-        else:
-            #should draw line
-            pass
+    def draw_arc(self):       
+        if self.vel and self.omega:
+            if self.omega != 0:
+                start_angle = 0 if self.omega > 0 else 180
+                end_angle = start_angle + 80 if self.omega < 0 else start_angle - 80
+                
+                #left wheel projection
+                cv2.ellipse(img=self.cv_image, center=(int(320 - radius - 150),480), axes=(int(abs(radius)), 300),
+                            angle=0, startAngle=start_angle, endAngle= end_angle, color=(0, 0, 255), thickness=2)
+                
+                #right wheel projection
+                cv2.ellipse(img=self.cv_image, center=(int(320 - radius + 150),480), axes=(int(abs(radius)), 300),
+                            angle=0, startAngle=start_angle, endAngle= end_angle, color=(0, 0, 255), thickness=2)
+
+                # cv2.ellipse(self.cv_image, (320, 240), (50,50), 0, 0, 80, (0, 0, 255), 2)
+            else:
+                #should draw line
+                pass
             
     def process_camera(self, cameramsg):
         """ Callback method to store camera parameters from a 
