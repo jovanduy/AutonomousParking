@@ -22,7 +22,8 @@ class ParkingSpotRecognizer(object):
         """ Initialize the parking spot recognizer """
         rospy.Subscriber('/camera/camera_info', CameraInfo, self.process_camera)
         self.cv_image = None                        # the latest image from the camera
-        self.crop_img = None
+        self.dst =  np.zeros((480, 640, 3), np.uint8)
+        self.arc_image = np.zeros((480, 640, 3), np.uint8)
         self.bridge = CvBridge()                    # used to convert ROS messages to OpenCV
         cv2.namedWindow('video_window')
         self.hsv_lb = np.array([0, 70, 60]) # hsv lower bound 
@@ -45,8 +46,37 @@ class ParkingSpotRecognizer(object):
             called cv_image for subsequent processing """
         self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self.img_copy = deepcopy(self.cv_image)
-        self.calculate_arc()
-        #self.draw_arc()
+        #self.calculate_arc()
+        self.arc_image = np.zeros((480, 640, 3), np.uint8)
+        self.draw_arc()
+
+        if self.vel and self.omega and self.omega != 0:
+            self.radius = self.vel/self.omega
+            pts1 = np.float32([[0,0], [640, 0], [0, 480], [640, 480]])
+            pts2 = np.float32([[0,2*self.radius], [640, 2*self.radius], [0, 480], [640, 480]])
+            M = cv2.getPerspectiveTransform(pts1, pts2)
+
+            self.dst = cv2.warpPerspective(self.arc_image, M, (480,640))            
+            
+        #overlay the arc on the image
+        rows, cols, channels = self.arc_image.shape
+        roi = self.cv_image
+
+        #change arc_image to grayscale
+        arc2gray = cv2.cvtColor(self.arc_image, cv2.COLOR_BGR2GRAY)
+        ret, mask = cv2.threshold(arc2gray, 10, 255, cv2.THRESH_BINARY)
+        mask_inv = cv2.bitwise_not(mask)
+
+        #black out area of arc in ROI
+        img1_bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
+        img2_fg = cv2.bitwise_and(self.arc_image, self.arc_image, mask=mask)
+
+        #put arc on ROI and modify the main image
+        dst = cv2.add(img1_bg, img2_fg)
+        self.cv_image[0:rows, 0:cols] = dst
+
+        
+        
         # self.hsv_image = cv2.cvtColor(self.cv_image, cv2.COLOR_BGR2HSV)
         # self.binary_image = cv2.inRange(self.hsv_image, self.hsv_lb, self.hsv_ub)
         # self.spot_delineators = self.find_delineators()
@@ -77,10 +107,12 @@ class ParkingSpotRecognizer(object):
             
             #convert that endpoint to a pixel in our image
             pixel_x = np.matmul(np.asarray(self.K).reshape(3,3), endpoint)[0][0]
+            print "self.k: ", self.K
             pixel_y = 0.13 * self.fy / abs(self.radius) + self.cy
             
             pixel = (pixel_x, pixel_y)
-            print pixel
+            print "radius: ",  self.radius
+            print "pixel:  ",  pixel
         
             endpoint1 = (pixel[0] - 20, pixel[1])
             endpoint2 = (pixel[0] + 20, pixel[1])
@@ -93,16 +125,16 @@ class ParkingSpotRecognizer(object):
             if self.omega != 0:
                 start_angle = 0 if self.omega > 0 else 180
                 end_angle = start_angle + 80 if self.omega < 0 else start_angle - 80
+                self.radius = (self.vel/self.omega)*500
                 
                 #left wheel projection
-                cv2.ellipse(img=self.cv_image, center=(int(320 - radius - 150),480), axes=(int(abs(radius)), 300),
+                cv2.ellipse(img=self.arc_image, center=(int(320 - self.radius - 150),480), axes=(int(abs(self.radius)), int(abs(self.radius))),
                             angle=0, startAngle=start_angle, endAngle= end_angle, color=(0, 0, 255), thickness=2)
                 
                 #right wheel projection
-                cv2.ellipse(img=self.cv_image, center=(int(320 - radius + 150),480), axes=(int(abs(radius)), 300),
+                cv2.ellipse(img=self.arc_image, center=(int(320 - self.radius + 150),480), axes=(int(abs(self.radius)), int(abs(self.radius))),
                             angle=0, startAngle=start_angle, endAngle= end_angle, color=(0, 0, 255), thickness=2)
 
-                # cv2.ellipse(self.cv_image, (320, 240), (50,50), 0, 0, 80, (0, 0, 255), 2)
             else:
                 #should draw line
                 pass
@@ -225,7 +257,8 @@ class ParkingSpotRecognizer(object):
             if not self.cv_image is None:
                 # creates a window and displays the image for X milliseconds
                 cv2.imshow('video_window', self.cv_image)
-                # cv2.imshow('binary', self.binary_image)
+                
+                cv2.imshow('transformed', self.dst)
                 # if not self.crop_img is None:
                 #     cv2.imshow('crop_img', self.crop_img)
                 cv2.waitKey(5)
